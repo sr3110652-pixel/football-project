@@ -1,0 +1,424 @@
+// Simple football-like (paddles + ball + goals) game with Career Mode
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const ratio = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth;
+  const cssH = canvas.clientHeight;
+  canvas.width = Math.floor(cssW * ratio);
+  canvas.height = Math.floor(cssH * ratio);
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const G = {
+  width: canvas.clientWidth,
+  height: canvas.clientHeight,
+  fieldPadding: 20,
+  goalWidth: 10,
+  matchDurationSec: 60 // 1 minute matches
+};
+
+let leftScore = 0;
+let rightScore = 0;
+
+const playerH = 90;
+const playerW = 14;
+const speedBase = 6;
+
+const left = { x: 60, y: (canvas.clientHeight - playerH)/2, w: playerW, h: playerH, vy: 0 };
+const right = { x: canvas.clientWidth - 60 - playerW, y: (canvas.clientHeight - playerH)/2, w: playerW, h: playerH, vy: 0 };
+
+const ball = { x: canvas.clientWidth/2, y: canvas.clientHeight/2, r: 10, vx: 6 * (Math.random() > 0.5 ? 1 : -1), vy: 2*(Math.random()-0.5) };
+
+let keys = {};
+let running = false;
+let paused = false;
+let lastTick = performance.now();
+let matchEndTime = null; // timestamp when match ends
+let inMatch = false;
+let gameMode = 'arcade'; // 'arcade' or 'career'
+
+// Career data and persistence
+const CAREER_KEY = 'footballCareer_v1';
+let career = null; // will be object when in career mode
+
+function defaultCareer() {
+  return {
+    name: 'Risers',
+    season: 1,
+    matchPlayed: 0,
+    wins: 0,
+    draws: 0,
+    losses: 0,
+    xp: 0,
+    coins: 0,
+    upgrades: {
+      paddleSize: 0, // each level adds to paddle height
+      speed: 0,      // multiplies movement speed
+      kickPower: 0   // increases ball vx multiplier
+    }
+  };
+}
+
+function saveCareer() {
+  if (!career) return;
+  localStorage.setItem(CAREER_KEY, JSON.stringify(career));
+}
+function loadCareer() {
+  const raw = localStorage.getItem(CAREER_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch(e){ return null; }
+}
+
+// UI hooks
+const startBtn = document.getElementById('startBtn');
+const careerBtn = document.getElementById('careerBtn');
+const careerOverlay = document.getElementById('careerOverlay');
+const newCareerBtn = document.getElementById('newCareerBtn');
+const continueBtn = document.getElementById('continueBtn');
+const backFromCareer = document.getElementById('backFromCareer');
+const careerMain = document.getElementById('careerMain');
+const careerScreen = document.getElementById('careerScreen');
+const careerInfo = document.getElementById('careerInfo');
+const careerHeader = document.getElementById('careerHeader');
+const seasonStats = document.getElementById('seasonStats');
+const upgradePanel = document.getElementById('upgradePanel');
+const playMatchBtn = document.getElementById('playMatchBtn');
+const saveCareerBtn = document.getElementById('saveCareerBtn');
+const resetCareerBtn = document.getElementById('resetCareerBtn');
+const exitCareerBtn = document.getElementById('exitCareerBtn');
+const matchResult = document.getElementById('matchResult');
+const matchSummary = document.getElementById('matchSummary');
+const continueAfterMatch = document.getElementById('continueAfterMatch');
+
+startBtn.addEventListener('click', () => { gameMode='arcade'; start(); });
+careerBtn.addEventListener('click', openCareerOverlay);
+newCareerBtn.addEventListener('click', () => { career = defaultCareer(); openCareerScreen(); });
+continueBtn.addEventListener('click', ()=>{ career = loadCareer() || defaultCareer(); openCareerScreen(); });
+backFromCareer.addEventListener('click', closeCareerOverlay);
+playMatchBtn.addEventListener('click', () => { if (career) { gameMode='career'; startCareerMatch(); } });
+saveCareerBtn.addEventListener('click', () => { saveCareer(); alert('Career saved'); });
+resetCareerBtn.addEventListener('click', ()=>{ if(confirm('Reset career?')){ localStorage.removeItem(CAREER_KEY); career = defaultCareer(); renderCareer(); } });
+exitCareerBtn.addEventListener('click', closeCareerOverlay);
+continueAfterMatch.addEventListener('click', ()=>{ matchResult.classList.add('hidden'); openCareerScreen(); });
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ') { paused = !paused; }
+  if (e.key.toLowerCase() === 'r') { resetScores(); }
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+function openCareerOverlay(){
+  careerOverlay.classList.remove('hidden');
+  careerMain.classList.remove('hidden');
+  careerScreen.classList.add('hidden');
+  matchResult.classList.add('hidden');
+  const saved = loadCareer();
+  careerInfo.innerHTML = saved ? `<div>Saved career: ${saved.name} — Season ${saved.season}, XP ${saved.xp}, Coins ${saved.coins}</div>` : '<div>No saved career found.</div>';
+}
+function closeCareerOverlay(){ careerOverlay.classList.add('hidden'); }
+
+function openCareerScreen(){
+  careerMain.classList.add('hidden');
+  careerScreen.classList.remove('hidden');
+  renderCareer();
+}
+
+function renderCareer(){
+  if (!career) career = defaultCareer();
+  careerHeader.innerHTML = `<strong>Team:</strong> ${career.name} — <strong>Season</strong> ${career.season}`;
+  seasonStats.innerHTML = `
+    <div>Matches played: ${career.matchPlayed}</div>
+    <div>W/D/L: ${career.wins}/${career.draws}/${career.losses}</div>
+    <div>XP: ${career.xp} — Coins: ${career.coins}</div>
+  `;
+
+  // upgrades
+  upgradePanel.innerHTML = '<h4>Upgrades</h4>';
+  const ulist = document.createElement('div');
+
+  const upgrades = [
+    { key: 'paddleSize', name: 'Paddle Size', cost: 5, desc: '+10% height per level' },
+    { key: 'speed', name: 'Movement Speed', cost: 6, desc: '+10% speed per level' },
+    { key: 'kickPower', name: 'Kick Power', cost: 8, desc: '+10% kick per level' }
+  ];
+
+  upgrades.forEach(u => {
+    const el = document.createElement('div');
+    el.className = 'upgrade';
+    el.innerHTML = `<div><strong>${u.name}</strong><div style="font-size:12px;color:#dfe;">${u.desc}</div></div>`;
+    const right = document.createElement('div');
+    right.innerHTML = `<div>Lv ${career.upgrades[u.key]}</div>`;
+    const btn = document.createElement('button');
+    btn.textContent = `Buy (${u.cost} XP)`;
+    btn.disabled = career.xp < u.cost;
+    btn.addEventListener('click', ()=>{ if(career.xp>=u.cost){ career.xp -= u.cost; career.upgrades[u.key]++; saveCareer(); renderCareer(); } });
+    right.appendChild(btn);
+    el.appendChild(right);
+    ulist.appendChild(el);
+  });
+
+  upgradePanel.appendChild(ulist);
+}
+
+// Game control
+function start() {
+  running = true;
+  paused = false;
+  leftScore = 0; rightScore = 0;
+  updateScoreUI();
+  resetBall();
+  inMatch = true;
+  matchEndTime = null; // unset for arcade
+  loop();
+}
+
+function startCareerMatch(){
+  running = true;
+  paused = false;
+  leftScore = 0; rightScore = 0;
+  updateScoreUI();
+  resetBall();
+  inMatch = true;
+  matchEndTime = Date.now() + G.matchDurationSec * 1000;
+  loop();
+}
+
+function endCareerMatch(){
+  inMatch = false;
+  running = false;
+  // decide result
+  let result = 'draw';
+  if (leftScore > rightScore) result = 'win';
+  else if (leftScore < rightScore) result = 'loss';
+
+  career.matchPlayed++;
+  if (result==='win') career.wins++; else if (result==='loss') career.losses++; else career.draws++;
+
+  // reward xp and coins
+  const baseXP = 2 + Math.max(0, leftScore - rightScore);
+  const baseCoins = 3 + Math.max(0, leftScore - rightScore);
+  if (result==='win'){ career.xp += baseXP + 3; career.coins += baseCoins + 5; }
+  else if (result==='draw'){ career.xp += baseXP; career.coins += baseCoins; }
+  else { career.xp += Math.max(1, Math.floor(baseXP/2)); career.coins += Math.max(1, Math.floor(baseCoins/2)); }
+
+  saveCareer();
+  showMatchResult(result);
+}
+
+function showMatchResult(result){
+  matchSummary.innerHTML = `
+    <div>Result: <strong>${result.toUpperCase()}</strong></div>
+    <div>Score: ${leftScore} — ${rightScore}</div>
+    <div>XP: ${career.xp} — Coins: ${career.coins}</div>
+  `;
+  careerScreen.classList.add('hidden');
+  matchResult.classList.remove('hidden');
+}
+
+function resetBall(servingToRight = Math.random() > 0.5) {
+  ball.x = canvas.clientWidth/2;
+  ball.y = canvas.clientHeight/2;
+  const s = 6;
+  ball.vx = s * (servingToRight ? 1 : -1);
+  ball.vy = (Math.random() - 0.5) * 4;
+}
+
+function resetScores() {
+  leftScore = 0; rightScore = 0;
+  updateScoreUI();
+  resetBall();
+}
+
+function updateScoreUI() {
+  document.getElementById('leftScore').textContent = leftScore;
+  document.getElementById('rightScore').textContent = rightScore;
+}
+
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+function physicsStep(dt) {
+  // Player input
+  const plySpeed = speedBase * (1 + (career ? (career.upgrades.speed * 0.1) : 0));
+  if (keys['w'] || keys['W']) left.vy = -plySpeed;
+  else if (keys['s'] || keys['S']) left.vy = plySpeed;
+  else left.vy = 0;
+
+  if (keys['ArrowUp']) right.vy = -speedBase;
+  else if (keys['ArrowDown']) right.vy = speedBase;
+  else right.vy = 0;
+
+  left.y = clamp(left.y + left.vy, G.fieldPadding, canvas.clientHeight - left.h - G.fieldPadding);
+  right.y = clamp(right.y + right.vy, G.fieldPadding, canvas.clientHeight - right.h - G.fieldPadding);
+
+  // Apply upgrades to sizes
+  const sizeBonus = career ? 1 + (career.upgrades.paddleSize * 0.1) : 1;
+  left.h = playerH * sizeBonus;
+  right.h = playerH; // AI unchanged for now
+
+  // Ball movement
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  // Top/bottom collision
+  if (ball.y - ball.r < G.fieldPadding) {
+    ball.y = G.fieldPadding + ball.r;
+    ball.vy *= -1;
+  } else if (ball.y + ball.r > canvas.clientHeight - G.fieldPadding) {
+    ball.y = canvas.clientHeight - G.fieldPadding - ball.r;
+    ball.vy *= -1;
+  }
+
+  // Player collisions (simple AABB -> circle)
+  function hitPlayer(p) {
+    const nearestX = clamp(ball.x, p.x, p.x + p.w);
+    const nearestY = clamp(ball.y, p.y, p.y + p.h);
+    const dx = ball.x - nearestX;
+    const dy = ball.y - nearestY;
+    return (dx*dx + dy*dy) <= (ball.r * ball.r);
+  }
+
+  if (hitPlayer(left) && ball.vx < 0) {
+    ball.x = left.x + left.w + ball.r;
+    ball.vx = -ball.vx * 1.08 * (1 + (career ? career.upgrades.kickPower*0.1 : 0));
+    // add vertical kick based on where it hit
+    const hitPos = (ball.y - (left.y + left.h/2)) / (left.h/2);
+    ball.vy += hitPos * 3;
+  } else if (hitPlayer(right) && ball.vx > 0) {
+    ball.x = right.x - ball.r;
+    ball.vx = -ball.vx * 1.02;
+    const hitPos = (ball.y - (right.y + right.h/2)) / (right.h/2);
+    ball.vy += hitPos * 3;
+  }
+
+  // Goals
+  if (ball.x - ball.r < 0) {
+    // right scores
+    rightScore++;
+    updateScoreUI();
+    resetBall(true);
+  } else if (ball.x + ball.r > canvas.clientWidth) {
+    leftScore++;
+    updateScoreUI();
+    resetBall(false);
+  }
+
+  // limit velocities to keep things stable
+  const maxV = 18;
+  ball.vx = clamp(ball.vx, -maxV, maxV);
+  ball.vy = clamp(ball.vy, -maxV, maxV);
+
+  // Simple AI for right paddle (follow ball with delay)
+  const aiSpeed = 4.5;
+  const centerY = right.y + right.h/2;
+  if (ball.x > canvas.clientWidth*0.4) {
+    if (ball.y < centerY - 6) right.y -= aiSpeed;
+    else if (ball.y > centerY + 6) right.y += aiSpeed;
+  }
+  right.y = clamp(right.y, G.fieldPadding, canvas.clientHeight - right.h - G.fieldPadding);
+}
+
+function drawField() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  // green turf
+  ctx.fillStyle = '#0d6b2a';
+  ctx.fillRect(0,0,w,h);
+
+  // field padding / border
+  ctx.strokeStyle = '#ffffff88';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(G.fieldPadding/2, G.fieldPadding/2, w - G.fieldPadding, h - G.fieldPadding);
+
+  // center line
+  ctx.beginPath();
+  ctx.moveTo(w/2, G.fieldPadding);
+  ctx.lineTo(w/2, h - G.fieldPadding);
+  ctx.stroke();
+
+  // center circle
+  ctx.beginPath();
+  ctx.lineWidth = 2;
+  ctx.arc(w/2, h/2, 70, 0, Math.PI*2);
+  ctx.stroke();
+
+  // simple goals (just lines)
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = '#ffffffaa';
+  ctx.beginPath();
+  ctx.moveTo(0, h*0.35);
+  ctx.lineTo(0, h*0.65);
+  ctx.moveTo(w, h*0.35);
+  ctx.lineTo(w, h*0.65);
+  ctx.stroke();
+}
+
+function draw() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0,0,w,h);
+  drawField();
+
+  // players
+  ctx.fillStyle = '#f2f2f2';
+  roundRect(ctx, left.x, left.y, left.w, left.h, 6, true, false);
+  roundRect(ctx, right.x, right.y, right.w, right.h, 6, true, false);
+
+  // ball
+  ctx.beginPath();
+  ctx.fillStyle = '#ffffff';
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+  ctx.fill();
+
+  // timer (career)
+  if (gameMode === 'career' && matchEndTime) {
+    const remaining = Math.max(0, Math.round((matchEndTime - Date.now())/1000));
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px sans-serif';
+    ctx.fillText(`Time: ${remaining}s`, canvas.clientWidth/2 - 40, 30);
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  if (typeof r === 'undefined') r = 5;
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
+function loop(now){
+  if (!running) return;
+  const dt = Math.min(40, now - lastTick);
+  lastTick = now;
+  if (!paused) {
+    physicsStep(dt);
+    draw();
+  }
+
+  // career match timing
+  if (gameMode === 'career' && matchEndTime && Date.now() >= matchEndTime && inMatch) {
+    endCareerMatch();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// Initialize rendering sizes and starting ball
+resize();
+resetBall();
+draw();
+
+// Expose for debugging in console
+window.game = { left, right, ball, start, resetScores, pause: () => { paused = true }, resume: () => { paused = false }, career };
+
+// Save career when page unloads
+window.addEventListener('beforeunload', ()=>{ if (career) saveCareer(); });
