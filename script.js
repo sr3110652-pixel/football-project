@@ -1,4 +1,4 @@
-// Simple football-like (paddles + ball + goals) game with Career Mode
+// Simple football-like (paddles + ball + goals) game with Career Mode, full player avatars and touch controls
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -73,9 +73,28 @@ function loadCareer() {
   try { return JSON.parse(raw); } catch(e){ return null; }
 }
 
+// Player avatars (left = player, right = opponent)
+const playerAvatar = {
+  name: 'You',
+  color: '#ffd700',
+  shirt: '#1e90ff',
+  shorts: '#ffffff',
+  socks: '#1e90ff',
+  kickCooldownMS: 900,
+  lastKick: 0
+};
+const opponentAvatar = {
+  name: 'Rivals',
+  color: '#ff6b6b',
+  shirt: '#ff6b6b',
+  shorts: '#ffffff',
+  socks: '#ff6b6b'
+};
+
 // UI hooks
 const startBtn = document.getElementById('startBtn');
 const careerBtn = document.getElementById('careerBtn');
+const setNameBtn = document.getElementById('setNameBtn');
 const careerOverlay = document.getElementById('careerOverlay');
 const newCareerBtn = document.getElementById('newCareerBtn');
 const continueBtn = document.getElementById('continueBtn');
@@ -94,8 +113,18 @@ const matchResult = document.getElementById('matchResult');
 const matchSummary = document.getElementById('matchSummary');
 const continueAfterMatch = document.getElementById('continueAfterMatch');
 
+// touch controls
+const touchControls = document.getElementById('touchControls');
+const leftUpBtn = document.getElementById('leftUp');
+const leftDownBtn = document.getElementById('leftDown');
+const leftKickBtn = document.getElementById('leftKick');
+const rightUpBtn = document.getElementById('rightUp');
+const rightDownBtn = document.getElementById('rightDown');
+const rightKickBtn = document.getElementById('rightKick');
+
 startBtn.addEventListener('click', () => { gameMode='arcade'; start(); });
 careerBtn.addEventListener('click', openCareerOverlay);
+setNameBtn.addEventListener('click', ()=>{ const n = prompt('Enter player name:', playerAvatar.name); if(n) { playerAvatar.name = n; } });
 newCareerBtn.addEventListener('click', () => { career = defaultCareer(); openCareerScreen(); });
 continueBtn.addEventListener('click', ()=>{ career = loadCareer() || defaultCareer(); openCareerScreen(); });
 backFromCareer.addEventListener('click', closeCareerOverlay);
@@ -105,11 +134,38 @@ resetCareerBtn.addEventListener('click', ()=>{ if(confirm('Reset career?')){ loc
 exitCareerBtn.addEventListener('click', closeCareerOverlay);
 continueAfterMatch.addEventListener('click', ()=>{ matchResult.classList.add('hidden'); openCareerScreen(); });
 
+// touch button handlers
+function setupTouchControls(){
+  // show touch controls on small screens
+  if (window.innerWidth <= 720) touchControls.classList.remove('hidden');
+  else touchControls.classList.add('hidden');
+
+  leftUpBtn.addEventListener('pointerdown', ()=>{ left.vy = -speedBase; });
+  leftUpBtn.addEventListener('pointerup', ()=>{ left.vy = 0; });
+  leftDownBtn.addEventListener('pointerdown', ()=>{ left.vy = speedBase; });
+  leftDownBtn.addEventListener('pointerup', ()=>{ left.vy = 0; });
+  leftKickBtn.addEventListener('pointerdown', ()=>{ attemptSpecialKick(); });
+
+  rightUpBtn.addEventListener('pointerdown', ()=>{ right.vy = -speedBase; });
+  rightUpBtn.addEventListener('pointerup', ()=>{ right.vy = 0; });
+  rightDownBtn.addEventListener('pointerdown', ()=>{ right.vy = speedBase; });
+  rightDownBtn.addEventListener('pointerup', ()=>{ right.vy = 0; });
+  rightKickBtn.addEventListener('pointerdown', ()=>{ attemptSpecialKick(true); });
+
+  // pointerleave cancels movement
+  [leftUpBtn,leftDownBtn,rightUpBtn,rightDownBtn].forEach(b => {
+    b.addEventListener('pointerleave', ()=>{ left.vy = 0; right.vy=0; });
+  });
+}
+setupTouchControls();
+window.addEventListener('resize', setupTouchControls);
+
 // Keyboard
 document.addEventListener('keydown', e => {
   keys[e.key] = true;
   if (e.key === ' ') { paused = !paused; }
   if (e.key.toLowerCase() === 'r') { resetScores(); }
+  if (e.key.toLowerCase() === 'd') { attemptSpecialKick(); }
 });
 document.addEventListener('keyup', e => { keys[e.key] = false; });
 
@@ -175,6 +231,7 @@ function start() {
   resetBall();
   inMatch = true;
   matchEndTime = null; // unset for arcade
+  lastTick = performance.now();
   loop();
 }
 
@@ -186,6 +243,7 @@ function startCareerMatch(){
   resetBall();
   inMatch = true;
   matchEndTime = Date.now() + G.matchDurationSec * 1000;
+  lastTick = performance.now();
   loop();
 }
 
@@ -242,16 +300,31 @@ function updateScoreUI() {
 
 function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 
+function attemptSpecialKick(forOpponent=false){
+  const now = Date.now();
+  if (!forOpponent && now - playerAvatar.lastKick < playerAvatar.kickCooldownMS) return; // cooling down
+  // check proximity to ball
+  const targetP = forOpponent ? right : left;
+  const inXRange = forOpponent ? (ball.x + ball.r > right.x - 24) : (ball.x - ball.r < left.x + left.w + 24);
+  const inYRange = ball.y > targetP.y - 6 && ball.y < targetP.y + targetP.h + 6;
+  if (inXRange && inYRange) {
+    if (!forOpponent) playerAvatar.lastKick = now;
+    const power = 8 + (career ? (career.upgrades.kickPower * 0.5) : 0);
+    ball.vx = (forOpponent ? -1 : 1) * Math.max(Math.abs(ball.vx), power);
+    ball.vy += (Math.random()-0.5) * 4; // little randomness
+  }
+}
+
 function physicsStep(dt) {
   // Player input
   const plySpeed = speedBase * (1 + (career ? (career.upgrades.speed * 0.1) : 0));
   if (keys['w'] || keys['W']) left.vy = -plySpeed;
   else if (keys['s'] || keys['S']) left.vy = plySpeed;
-  else left.vy = 0;
+  else if (left.vy === undefined) left.vy = 0; // touch may set it
 
   if (keys['ArrowUp']) right.vy = -speedBase;
   else if (keys['ArrowDown']) right.vy = speedBase;
-  else right.vy = 0;
+  else if (right.vy === undefined) right.vy = 0;
 
   left.y = clamp(left.y + left.vy, G.fieldPadding, canvas.clientHeight - left.h - G.fieldPadding);
   right.y = clamp(right.y + right.vy, G.fieldPadding, canvas.clientHeight - right.h - G.fieldPadding);
@@ -286,7 +359,6 @@ function physicsStep(dt) {
   if (hitPlayer(left) && ball.vx < 0) {
     ball.x = left.x + left.w + ball.r;
     ball.vx = -ball.vx * 1.08 * (1 + (career ? career.upgrades.kickPower*0.1 : 0));
-    // add vertical kick based on where it hit
     const hitPos = (ball.y - (left.y + left.h/2)) / (left.h/2);
     ball.vy += hitPos * 3;
   } else if (hitPlayer(right) && ball.vx > 0) {
@@ -298,7 +370,6 @@ function physicsStep(dt) {
 
   // Goals
   if (ball.x - ball.r < 0) {
-    // right scores
     rightScore++;
     updateScoreUI();
     resetBall(true);
@@ -308,7 +379,7 @@ function physicsStep(dt) {
     resetBall(false);
   }
 
-  // limit velocities to keep things stable
+  // limit velocities
   const maxV = 18;
   ball.vx = clamp(ball.vx, -maxV, maxV);
   ball.vy = clamp(ball.vy, -maxV, maxV);
@@ -325,28 +396,19 @@ function physicsStep(dt) {
 
 function drawField() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  // green turf
   ctx.fillStyle = '#0d6b2a';
   ctx.fillRect(0,0,w,h);
-
-  // field padding / border
   ctx.strokeStyle = '#ffffff88';
   ctx.lineWidth = 3;
   ctx.strokeRect(G.fieldPadding/2, G.fieldPadding/2, w - G.fieldPadding, h - G.fieldPadding);
-
-  // center line
   ctx.beginPath();
   ctx.moveTo(w/2, G.fieldPadding);
   ctx.lineTo(w/2, h - G.fieldPadding);
   ctx.stroke();
-
-  // center circle
   ctx.beginPath();
   ctx.lineWidth = 2;
   ctx.arc(w/2, h/2, 70, 0, Math.PI*2);
   ctx.stroke();
-
-  // simple goals (just lines)
   ctx.lineWidth = 6;
   ctx.strokeStyle = '#ffffffaa';
   ctx.beginPath();
@@ -362,10 +424,14 @@ function draw() {
   ctx.clearRect(0,0,w,h);
   drawField();
 
-  // players
+  // paddles
   ctx.fillStyle = '#f2f2f2';
   roundRect(ctx, left.x, left.y, left.w, left.h, 6, true, false);
   roundRect(ctx, right.x, right.y, right.w, right.h, 6, true, false);
+
+  // draw avatars (full body) over paddles
+  drawAvatar(left, playerAvatar);
+  drawAvatar(right, opponentAvatar);
 
   // ball
   ctx.beginPath();
@@ -380,6 +446,30 @@ function draw() {
     ctx.font = '20px sans-serif';
     ctx.fillText(`Time: ${remaining}s`, canvas.clientWidth/2 - 40, 30);
   }
+}
+
+function drawAvatar(paddle, avatar){
+  const centerX = paddle.x + paddle.w/2;
+  const headY = paddle.y + 18;
+  // head
+  ctx.beginPath();
+  ctx.fillStyle = avatar.color;
+  ctx.arc(centerX + (paddle===left?6:-6), headY, 10, 0, Math.PI*2);
+  ctx.fill();
+  // torso
+  ctx.fillStyle = avatar.shirt;
+  ctx.fillRect(centerX - 10 + (paddle===left?6:-6), headY + 10, 20, 26);
+  // shorts
+  ctx.fillStyle = avatar.shorts;
+  ctx.fillRect(centerX - 10 + (paddle===left?6:-6), headY + 34, 20, 12);
+  // socks
+  ctx.fillStyle = avatar.socks;
+  ctx.fillRect(centerX - 10 + (paddle===left?6:-6), headY + 46, 20, 8);
+  // name
+  ctx.fillStyle = '#fff';
+  ctx.font = '12px sans-serif';
+  const nameX = paddle===left ? paddle.x : paddle.x - 6;
+  ctx.fillText(avatar.name, nameX, paddle.y - 6);
 }
 
 function roundRect(ctx, x, y, w, h, r, fill, stroke) {
@@ -404,7 +494,6 @@ function loop(now){
     draw();
   }
 
-  // career match timing
   if (gameMode === 'career' && matchEndTime && Date.now() >= matchEndTime && inMatch) {
     endCareerMatch();
   }
@@ -412,13 +501,13 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 
-// Initialize rendering sizes and starting ball
+// Initialize
 resize();
 resetBall();
 draw();
 
 // Expose for debugging in console
-window.game = { left, right, ball, start, resetScores, pause: () => { paused = true }, resume: () => { paused = false }, career };
+window.game = { left, right, ball, start, resetScores, pause: () => { paused = true }, resume: () => { paused = false }, career, playerAvatar, opponentAvatar };
 
 // Save career when page unloads
 window.addEventListener('beforeunload', ()=>{ if (career) saveCareer(); });

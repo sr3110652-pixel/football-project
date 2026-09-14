@@ -17,16 +17,31 @@
     <div id="controls">
       <div>Left player: W / S to move</div>
       <div>Right player: ↑ / ↓ to move</div>
-      <div>Space to pause / resume</div>
-      <div>R to reset scores</div>
+      <div>D to special kick (when close)</div>
+      <div>Space to pause / resume • R to reset scores</div>
     </div>
     <div id="modeButtons">
       <button id="startBtn">Start / Restart</button>
       <button id="careerBtn">Career Mode</button>
+      <button id="setNameBtn">Set Player Name</button>
     </div>
   </div>
 
   <canvas id="game"></canvas>
+
+  <!-- Mobile touch controls (visible on small screens) -->
+  <div id="touchControls" class="hidden">
+    <div class="side leftSide">
+      <button id="leftUp" class="touch-btn">▲</button>
+      <button id="leftDown" class="touch-btn">▼</button>
+      <button id="leftKick" class="touch-btn small">KICK</button>
+    </div>
+    <div class="side rightSide">
+      <button id="rightUp" class="touch-btn">▲</button>
+      <button id="rightDown" class="touch-btn">▼</button>
+      <button id="rightKick" class="touch-btn small">KICK</button>
+    </div>
+  </div>
 
   <!-- Career overlay -->
   <div id="careerOverlay" class="overlay hidden">
