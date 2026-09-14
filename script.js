@@ -1,4 +1,4 @@
-// Simple football-like (paddles + ball + goals) game with Career Mode, full player avatars and touch controls
+// Player detail: more hairstyles, boots color and customization UI
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -73,13 +73,16 @@ function loadCareer() {
   try { return JSON.parse(raw); } catch(e){ return null; }
 }
 
-// Player avatars (left = player, right = opponent)
+// Player avatars with more detail
 const playerAvatar = {
   name: 'You',
   color: '#ffd700',
   shirt: '#1e90ff',
   shorts: '#ffffff',
   socks: '#1e90ff',
+  boots: '#222222',
+  hairstyle: 'short', // options: short, long, mohawk, afro, bald
+  skin: '#f1c27d',
   kickCooldownMS: 900,
   lastKick: 0
 };
@@ -88,13 +91,18 @@ const opponentAvatar = {
   color: '#ff6b6b',
   shirt: '#ff6b6b',
   shorts: '#ffffff',
-  socks: '#ff6b6b'
+  socks: '#ff6b6b',
+  boots: '#ff0000',
+  hairstyle: 'mohawk',
+  skin: '#e0ac69'
 };
 
 // UI hooks
 const startBtn = document.getElementById('startBtn');
 const careerBtn = document.getElementById('careerBtn');
 const setNameBtn = document.getElementById('setNameBtn');
+const customizeBtn = document.getElementById('customizeBtn');
+const randomizeOppBtn = document.getElementById('randomizeOppBtn');
 const careerOverlay = document.getElementById('careerOverlay');
 const newCareerBtn = document.getElementById('newCareerBtn');
 const continueBtn = document.getElementById('continueBtn');
@@ -125,6 +133,8 @@ const rightKickBtn = document.getElementById('rightKick');
 startBtn.addEventListener('click', () => { gameMode='arcade'; start(); });
 careerBtn.addEventListener('click', openCareerOverlay);
 setNameBtn.addEventListener('click', ()=>{ const n = prompt('Enter player name:', playerAvatar.name); if(n) { playerAvatar.name = n; } });
+customizeBtn.addEventListener('click', openCustomizePrompt);
+randomizeOppBtn.addEventListener('click', ()=>{ randomizeOpponent(); });
 newCareerBtn.addEventListener('click', () => { career = defaultCareer(); openCareerScreen(); });
 continueBtn.addEventListener('click', ()=>{ career = loadCareer() || defaultCareer(); openCareerScreen(); });
 backFromCareer.addEventListener('click', closeCareerOverlay);
@@ -136,7 +146,6 @@ continueAfterMatch.addEventListener('click', ()=>{ matchResult.classList.add('hi
 
 // touch button handlers
 function setupTouchControls(){
-  // show touch controls on small screens
   if (window.innerWidth <= 720) touchControls.classList.remove('hidden');
   else touchControls.classList.add('hidden');
 
@@ -152,7 +161,6 @@ function setupTouchControls(){
   rightDownBtn.addEventListener('pointerup', ()=>{ right.vy = 0; });
   rightKickBtn.addEventListener('pointerdown', ()=>{ attemptSpecialKick(true); });
 
-  // pointerleave cancels movement
   [leftUpBtn,leftDownBtn,rightUpBtn,rightDownBtn].forEach(b => {
     b.addEventListener('pointerleave', ()=>{ left.vy = 0; right.vy=0; });
   });
@@ -221,6 +229,27 @@ function renderCareer(){
 
   upgradePanel.appendChild(ulist);
 }
+
+// Simple customize prompt (keeps UI small)
+function openCustomizePrompt(){
+  const hairstyle = prompt('Choose hairstyle: short, long, mohawk, afro, bald', playerAvatar.hairstyle) || playerAvatar.hairstyle;
+  const boots = prompt('Enter boots color (name or hex), e.g. red or #ffcc00', playerAvatar.boots) || playerAvatar.boots;
+  const skin = prompt('Enter skin tone (hex), e.g. #f1c27d', playerAvatar.skin) || playerAvatar.skin;
+  playerAvatar.hairstyle = hairstyle;
+  playerAvatar.boots = boots;
+  playerAvatar.skin = skin;
+}
+
+function randomizeOpponent(){
+  const hair = randomChoice(['short','long','mohawk','afro','bald']);
+  const boots = randomChoice(['#ff0000','#222222','#00b894','#6c5ce7','#ffbe76']);
+  const skin = randomChoice(['#e0ac69','#f1c27d','#d08b5b','#c68642']);
+  opponentAvatar.hairstyle = hair;
+  opponentAvatar.boots = boots;
+  opponentAvatar.skin = skin;
+}
+
+function randomChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 
 // Game control
 function start() {
@@ -303,7 +332,6 @@ function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 function attemptSpecialKick(forOpponent=false){
   const now = Date.now();
   if (!forOpponent && now - playerAvatar.lastKick < playerAvatar.kickCooldownMS) return; // cooling down
-  // check proximity to ball
   const targetP = forOpponent ? right : left;
   const inXRange = forOpponent ? (ball.x + ball.r > right.x - 24) : (ball.x - ball.r < left.x + left.w + 24);
   const inYRange = ball.y > targetP.y - 6 && ball.y < targetP.y + targetP.h + 6;
@@ -311,16 +339,15 @@ function attemptSpecialKick(forOpponent=false){
     if (!forOpponent) playerAvatar.lastKick = now;
     const power = 8 + (career ? (career.upgrades.kickPower * 0.5) : 0);
     ball.vx = (forOpponent ? -1 : 1) * Math.max(Math.abs(ball.vx), power);
-    ball.vy += (Math.random()-0.5) * 4; // little randomness
+    ball.vy += (Math.random()-0.5) * 4;
   }
 }
 
 function physicsStep(dt) {
-  // Player input
   const plySpeed = speedBase * (1 + (career ? (career.upgrades.speed * 0.1) : 0));
   if (keys['w'] || keys['W']) left.vy = -plySpeed;
   else if (keys['s'] || keys['S']) left.vy = plySpeed;
-  else if (left.vy === undefined) left.vy = 0; // touch may set it
+  else if (left.vy === undefined) left.vy = 0;
 
   if (keys['ArrowUp']) right.vy = -speedBase;
   else if (keys['ArrowDown']) right.vy = speedBase;
@@ -329,16 +356,13 @@ function physicsStep(dt) {
   left.y = clamp(left.y + left.vy, G.fieldPadding, canvas.clientHeight - left.h - G.fieldPadding);
   right.y = clamp(right.y + right.vy, G.fieldPadding, canvas.clientHeight - right.h - G.fieldPadding);
 
-  // Apply upgrades to sizes
   const sizeBonus = career ? 1 + (career.upgrades.paddleSize * 0.1) : 1;
   left.h = playerH * sizeBonus;
-  right.h = playerH; // AI unchanged for now
+  right.h = playerH;
 
-  // Ball movement
   ball.x += ball.vx;
   ball.y += ball.vy;
 
-  // Top/bottom collision
   if (ball.y - ball.r < G.fieldPadding) {
     ball.y = G.fieldPadding + ball.r;
     ball.vy *= -1;
@@ -347,7 +371,6 @@ function physicsStep(dt) {
     ball.vy *= -1;
   }
 
-  // Player collisions (simple AABB -> circle)
   function hitPlayer(p) {
     const nearestX = clamp(ball.x, p.x, p.x + p.w);
     const nearestY = clamp(ball.y, p.y, p.y + p.h);
@@ -368,7 +391,6 @@ function physicsStep(dt) {
     ball.vy += hitPos * 3;
   }
 
-  // Goals
   if (ball.x - ball.r < 0) {
     rightScore++;
     updateScoreUI();
@@ -379,12 +401,10 @@ function physicsStep(dt) {
     resetBall(false);
   }
 
-  // limit velocities
   const maxV = 18;
   ball.vx = clamp(ball.vx, -maxV, maxV);
   ball.vy = clamp(ball.vy, -maxV, maxV);
 
-  // Simple AI for right paddle (follow ball with delay)
   const aiSpeed = 4.5;
   const centerY = right.y + right.h/2;
   if (ball.x > canvas.clientWidth*0.4) {
@@ -423,23 +443,15 @@ function draw() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   ctx.clearRect(0,0,w,h);
   drawField();
-
-  // paddles
   ctx.fillStyle = '#f2f2f2';
   roundRect(ctx, left.x, left.y, left.w, left.h, 6, true, false);
   roundRect(ctx, right.x, right.y, right.w, right.h, 6, true, false);
-
-  // draw avatars (full body) over paddles
   drawAvatar(left, playerAvatar);
   drawAvatar(right, opponentAvatar);
-
-  // ball
   ctx.beginPath();
   ctx.fillStyle = '#ffffff';
   ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
   ctx.fill();
-
-  // timer (career)
   if (gameMode === 'career' && matchEndTime) {
     const remaining = Math.max(0, Math.round((matchEndTime - Date.now())/1000));
     ctx.fillStyle = '#fff';
@@ -451,11 +463,26 @@ function draw() {
 function drawAvatar(paddle, avatar){
   const centerX = paddle.x + paddle.w/2;
   const headY = paddle.y + 18;
-  // head
+  // head (skin)
   ctx.beginPath();
-  ctx.fillStyle = avatar.color;
+  ctx.fillStyle = avatar.skin || '#f1c27d';
   ctx.arc(centerX + (paddle===left?6:-6), headY, 10, 0, Math.PI*2);
   ctx.fill();
+
+  // hair variants
+  const hairX = centerX + (paddle===left?6:-6);
+  const hairY = headY - 8;
+  ctx.fillStyle = avatar.color;
+  if (avatar.hairstyle === 'short'){
+    ctx.beginPath(); ctx.ellipse(hairX, hairY, 11, 6, 0, 0, Math.PI*2); ctx.fill();
+  } else if (avatar.hairstyle === 'long'){
+    ctx.beginPath(); ctx.ellipse(hairX, hairY+4, 12, 14, 0, 0, Math.PI*2); ctx.fill();
+  } else if (avatar.hairstyle === 'mohawk'){
+    ctx.beginPath(); ctx.moveTo(hairX-8, hairY+4); ctx.lineTo(hairX, hairY-10); ctx.lineTo(hairX+8, hairY+4); ctx.closePath(); ctx.fill();
+  } else if (avatar.hairstyle === 'afro'){
+    ctx.beginPath(); ctx.arc(hairX, hairY, 14, 0, Math.PI*2); ctx.fill();
+  } // bald -> no hair
+
   // torso
   ctx.fillStyle = avatar.shirt;
   ctx.fillRect(centerX - 10 + (paddle===left?6:-6), headY + 10, 20, 26);
@@ -465,6 +492,11 @@ function drawAvatar(paddle, avatar){
   // socks
   ctx.fillStyle = avatar.socks;
   ctx.fillRect(centerX - 10 + (paddle===left?6:-6), headY + 46, 20, 8);
+  // boots (two small rectangles with boots color)
+  ctx.fillStyle = avatar.boots || '#222';
+  ctx.fillRect(centerX - 10 + (paddle===left?6:-6), headY + 54, 8, 6);
+  ctx.fillRect(centerX + 2 + (paddle===left?6:-6), headY + 54, 8, 6);
+
   // name
   ctx.fillStyle = '#fff';
   ctx.font = '12px sans-serif';
@@ -493,11 +525,9 @@ function loop(now){
     physicsStep(dt);
     draw();
   }
-
   if (gameMode === 'career' && matchEndTime && Date.now() >= matchEndTime && inMatch) {
     endCareerMatch();
   }
-
   requestAnimationFrame(loop);
 }
 

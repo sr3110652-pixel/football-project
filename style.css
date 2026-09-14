@@ -37,9 +37,9 @@ html,body{
   margin-bottom:6px;
 }
 
-#modeButtons{ display:flex; gap:8px; justify-content:center; align-items:center; }
+#modeButtons{ display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap; }
 
-button#startBtn, button#careerBtn, button#setNameBtn{
+button#startBtn, button#careerBtn, button#setNameBtn, button#customizeBtn, button#randomizeOppBtn{
   background:var(--accent);
   border:none;
   padding:8px 12px;
