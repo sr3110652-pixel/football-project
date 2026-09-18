@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Football Game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="ui">
+    <h1>Football (Mini) — Play in your browser</h1>
+    <div id="scoreboard">
+      <span id="leftScore">0</span>
+      <span> — </span>
+      <span id="rightScore">0</span>
+    </div>
+    <div id="controls">
+      <div>Left player: W / S to move</div>
+      <div>Right player: ↑ / ↓ to move</div>
+      <div>D to special kick (when close)</div>
+      <div>Space to pause / resume • R to reset scores</div>
+    </div>
+    <div id="modeButtons">
+      <button id="startBtn">Start / Restart</button>
+      <button id="careerBtn">Career Mode</button>
+      <button id="setNameBtn">Set Player Name</button>
+      <button id="customizeBtn">Customize Player</button>
+      <button id="randomizeOppBtn">Randomize Opponent</button>
+    </div>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <!-- Mobile touch controls (visible on small screens) -->
+  <div id="touchControls" class="hidden">
+    <div class="side leftSide">
+      <button id="leftUp" class="touch-btn">▲</button>
+      <button id="leftDown" class="touch-btn">▼</button>
+      <button id="leftKick" class="touch-btn small">KICK</button>
+    </div>
+    <div class="side rightSide">
+      <button id="rightUp" class="touch-btn">▲</button>
+      <button id="rightDown" class="touch-btn">▼</button>
+      <button id="rightKick" class="touch-btn small">KICK</button>
+    </div>
+  </div>
+
+  <!-- Career overlay -->
+  <div id="careerOverlay" class="overlay hidden">
+    <div class="panel">
+      <h2>Career Mode</h2>
+      <div id="careerMain">
+        <div id="careerInfo"></div>
+        <div class="careerActions">
+          <button id="newCareerBtn">New Career</button>
+          <button id="continueBtn">Continue</button>
+          <button id="backFromCareer">Back</button>
+        </div>
+      </div>
+
+      <div id="careerScreen" class="hidden">
+        <div id="careerHeader"></div>
+        <div id="careerBody">
+          <div id="seasonStats"></div>
+          <div id="upgradePanel"></div>
+          <div id="careerControls">
+            <button id="playMatchBtn">Play Match</button>
+            <button id="saveCareerBtn">Save</button>
+            <button id="resetCareerBtn">Reset Career</button>
+            <button id="exitCareerBtn">Exit Career</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="matchResult" class="hidden">
+        <h3>Match Result</h3>
+        <div id="matchSummary"></div>
+        <div><button id="continueAfterMatch">Continue</button></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

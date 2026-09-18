@@ -1,0 +1,90 @@
+:root{
+  --bg:#0b6623;
+  --field:#0f7a2b;
+  --line:#ffffffcc;
+  --ui-bg:rgba(0,0,0,0.4);
+  --panel:#ffffffee;
+  --accent:#ffd700;
+  --font: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+html,body{
+  height:100%;
+  margin:0;
+  font-family:var(--font);
+  background:var(--bg);
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+}
+
+#ui{
+  text-align:center;
+  margin-bottom:8px;
+}
+
+#scoreboard{
+  font-size:24px;
+  margin:6px 0;
+  color:var(--panel);
+}
+
+#controls{
+  font-size:13px;
+  color:#e8f5e9;
+  margin-bottom:6px;
+}
+
+#modeButtons{ display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap; }
+
+button#startBtn, button#careerBtn, button#setNameBtn, button#customizeBtn, button#randomizeOppBtn{
+  background:var(--accent);
+  border:none;
+  padding:8px 12px;
+  font-weight:600;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+canvas#game{
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.04));
+  box-shadow: 0 6px 30px rgba(0,0,0,0.4);
+  border-radius:8px;
+  width: 900px;
+  height: 500px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 160px);
+}
+
+/* Mobile touch controls */
+#touchControls{ position:fixed; inset:auto 0 12px 0; display:flex; justify-content:space-between; padding:0 12px; pointer-events:none; }
+#touchControls .side{ display:flex; flex-direction:column; gap:8px; pointer-events:auto; }
+.touch-btn{ background:rgba(255,255,255,0.12); color:#fff; border:0; padding:12px 18px; border-radius:8px; font-size:18px; }
+.touch-btn.small{ padding:8px 10px; font-size:14px; }
+.hidden{ display:none; }
+
+/* player name */
+.playerName{ position:absolute; color:#fff; font-size:13px; pointer-events:none; }
+
+/* Overlay / career styles */
+.overlay{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); z-index:40; }
+.overlay.hidden{ display:none; }
+.overlay .panel{ background: #103e1f; padding:18px; border-radius:10px; width:720px; max-width:calc(100vw - 40px); color:#fff; box-shadow:0 10px 40px rgba(0,0,0,0.6); }
+.overlay h2{ margin-top:0; }
+.careerActions{ display:flex; gap:8px; margin-top:12px; }
+.careerActions button{ padding:8px 10px; border-radius:6px; border:0; background:#2e8b57; cursor:pointer; }
+#careerHeader{ margin-bottom:8px; }
+#careerBody{ display:flex; gap:12px; }
+#seasonStats{ flex:1; background:rgba(255,255,255,0.03); padding:10px; border-radius:6px; }
+#upgradePanel{ width:260px; background:rgba(255,255,255,0.03); padding:10px; border-radius:6px; }
+.upgrade{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.upgrade button{ background:#ffd27a; border:0; padding:6px 8px; border-radius:6px; cursor:pointer; }
+#matchResult{ margin-top:12px; }
+
+/* Show touch controls on small screens */
+@media (max-width: 720px){
+  #touchControls{ display:flex; }
+  canvas#game{ width: calc(100vw - 12px); height: calc(100vh - 180px); }
+}
